@@ -7,7 +7,7 @@ class ListenerServer:
 
     def __init__(self, input_port, target_ip, target_port, connections_per_thread = 5, workers = 10):
         self.input_port = input_port
-        self.target_ip = target_ip
+        self.target_ip = socket.gethostbyname(target_ip)
         self.target_port = target_port
         self.connections_per_thread = 5
 
@@ -187,3 +187,9 @@ class ListenerServer:
 
         self.main_thread.join()
         self.main_thread = None
+
+    def get_inbound_connections(self):
+        return len(self.inbound_connections)
+
+    def get_outbound_connections(self):
+        return len(self.outbound_connections)
