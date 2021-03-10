@@ -18,7 +18,7 @@ class HTTPRequest(BaseHTTPRequestHandler):
         self.error_message = message
 
 class HTTPProxyServer:
-    def __init__(self, input_port, workers = 1):
+    def __init__(self, input_port, workers = 10):
         self.input_port = input_port
 
         self.bind_epoll = select.epoll()
@@ -75,7 +75,6 @@ class HTTPProxyServer:
                 if inbound==False:
                     sock, out_sock = recv_list[sock.fileno()]
                     out_sock.sendall(msg)
-                    print("Message sent...")
                 else:
                     out_sock = self.create_connection(msg)
 
@@ -93,7 +92,6 @@ class HTTPProxyServer:
                 return
 
     def close_sockets(self, sock, recv_list, send_list):
-        print("Closing all sockets....")
         if sock.fileno() == -1:
             return
 
@@ -109,7 +107,6 @@ class HTTPProxyServer:
         self.close_socket(sock, recv_list)
 
     def close_socket(self, sock, recv_list):
-        print("Socket closed....")
         if sock.fileno() == -1:
             # File is already closed.
             return
