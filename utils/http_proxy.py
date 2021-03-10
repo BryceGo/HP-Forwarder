@@ -1,15 +1,25 @@
+from http.server import BaseHTTPRequestHandler
+from io import BytesIO
 import select
 import socket
 import threading
 import errno
+import sys
 
-class ListenerServer:
+class HTTPRequest(BaseHTTPRequestHandler):
+    def __init__(self, request_text):
+        self.rfile = BytesIO(request_text)
+        self.raw_requestline = self.rfile.readline()
+        self.error_code = self.error_message = None
+        self.parse_request()
 
-    def __init__(self, input_port, target_ip, target_port, connections_per_thread = 5, workers = 10):
+    def send_error(self, code, message):
+        self.error_code = code
+        self.error_message = message
+
+class HTTPProxyServer:
+    def __init__(self, input_port, workers = 1):
         self.input_port = input_port
-        self.target_ip = socket.gethostbyname(target_ip)
-        self.target_port = target_port
-        self.connections_per_thread = connections_per_thread
 
         self.bind_epoll = select.epoll()
         self.bind_socket = None
@@ -27,65 +37,92 @@ class ListenerServer:
         self.number_of_workers= workers
         self.main_thread = None
 
-
     @staticmethod
-    def create_connection(ip_address, port):
+    def create_connection(msg, port=80):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.connect((ip_address, port))
-            sock.setblocking(0)
 
+        try:
+            request = HTTPRequest(msg)
+        except Exception as e:
+            print("Could not parse request")
+            return None
+
+        try:
+            sock.connect((socket.gethostbyname(request.headers['host']), port))
+            sock.setblocking(0)
             return sock
         except Exception as e:
-            return -1
+            raise e
+            return None
 
-    def receive_and_send(self, sock, recv_list, send_list):
+    def receive_and_send(self, sock, recv_list, send_list, inbound=True):
+        outbound_events = select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP | select.EPOLLEXCLUSIVE
         while True:
             try:
                 msg = sock.recv(2048)
 
                 if msg == b'':
-                    self.close_sockets(sock, recv_list, send_list)
+                    self.close_socket(sock, recv_list)
                     return
             except Exception as e:
-                return
+                if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+                    return
 
             try:
                 if not(sock.fileno() in recv_list):
                     return
 
-                sock, out_sock = recv_list[sock.fileno()]
-                out_sock.send(msg)
+                if inbound==False:
+                    sock, out_sock = recv_list[sock.fileno()]
+                    out_sock.sendall(msg)
+                    print("Message sent...")
+                else:
+                    out_sock = self.create_connection(msg)
+
+                    if out_sock == None:
+                        # self.close_socket(sock, recv_list)
+                        self.close_sockets(out_sock, recv_list, send_list)
+                        return
+
+                    self.outbound_epoll.register(out_sock.fileno(), outbound_events)
+                    self.outbound_connections[out_sock.fileno()] = [out_sock, sock]
+                    self.inbound_connections[sock.fileno()][1].append(out_sock)
+                    out_sock.sendall(msg)
+
             except Exception as e:
                 return
 
     def close_sockets(self, sock, recv_list, send_list):
+        print("Closing all sockets....")
+        if sock.fileno() == -1:
+            return
+
+        if sock.fileno() in recv_list:
+            for out_sock in recv_list[sock.fileno()][1]:
+                try:
+                    del send_list[out_sock.fileno()]
+                    out_sock.close()
+                except Exception as e:
+                    continue
+        else:
+            return
+        self.close_socket(sock, recv_list)
+
+    def close_socket(self, sock, recv_list):
+        print("Socket closed....")
         if sock.fileno() == -1:
             # File is already closed.
             return
 
         if sock.fileno() in recv_list:
             try:
-                sock, out_sock = recv_list[sock.fileno()]
                 del recv_list[sock.fileno()]
                 sock.close()
             except Exception as e:
-                # Must have been deleted already.
                 return
-        else:
-            return
+        return
 
-
-        if out_sock.fileno() in send_list:
-            try:
-                del send_list[out_sock.fileno()]
-                out_sock.close()
-            except Exception as e:
-                # Must have been deleted already.
-                pass
-
-
-    def worker_thread(self, inbound=True, max_events= 500):
+    def worker_thread(self, inbound=True, max_events=500):
         if inbound == True:
             epoll = self.inbound_epoll
             recv_list = self.inbound_connections
@@ -109,9 +146,13 @@ class ListenerServer:
                     continue
 
                 if event & (select.EPOLLIN):
-                    self.receive_and_send(sock, recv_list, send_list)
+                    self.receive_and_send(sock, recv_list, send_list, inbound)
                 elif event & (select.EPOLLERR | select.EPOLLHUP):
-                    self.close_sockets(sock, recv_list, send_list)
+                    # self.close_socket(sock, recv_list)
+                    if inbound == True:
+                        self.close_sockets(sock, recv_list, send_list)
+                    else:
+                        self.close_socket(sock, recv_list)
                 else:
                     print("Warning Unknown event detected.", fd, event)
 
@@ -119,8 +160,7 @@ class ListenerServer:
     def start_eternal_loop(self):
         events = select.EPOLLIN | select.EPOLLET
         inbound_events = select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP | select.EPOLLEXCLUSIVE
-        outbound_events = select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP | select.EPOLLEXCLUSIVE
-
+        
         self.bind_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.bind_socket.setblocking(0)
         self.bind_socket.bind(('0.0.0.0', self.input_port))
@@ -140,18 +180,10 @@ class ListenerServer:
             while True:
                 try:
                     sock, address = self.bind_socket.accept()
-                    out_sock = self.create_connection(self.target_ip, self.target_port)
-                    if out_sock == -1:
-                        sock.close()
-                        continue
-
-                    # Register to the outbound epoll instance
-                    self.outbound_epoll.register(out_sock.fileno(), outbound_events)
-                    self.outbound_connections[out_sock.fileno()] = [out_sock, sock]
 
                     # Register to the invound epoll instance
                     self.inbound_epoll.register(sock.fileno(), inbound_events)
-                    self.inbound_connections[sock.fileno()] = [sock, out_sock]
+                    self.inbound_connections[sock.fileno()] = [sock, []]
 
                 except Exception as e:
                     if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
