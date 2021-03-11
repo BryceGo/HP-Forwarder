@@ -20,6 +20,7 @@ class ListenerServer:
         self.outbound_epoll = select.epoll()
 
         self.stop_flag = threading.Event()
+        self.stop_flag.set()
 
         self.inbound_workers = []
         self.outbound_workers = []
@@ -157,7 +158,7 @@ class ListenerServer:
                     if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
                         break
                     raise e
-
+        self.bind_socket.close()
 
     def start(self):
         self.stop_flag.clear()
@@ -184,6 +185,7 @@ class ListenerServer:
 
         self.main_thread.join()
         self.main_thread = None
+        print("closed")
 
     def get_inbound_connections(self):
         return len(self.inbound_connections)

@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Port Forwarder</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout">
@@ -30,7 +30,7 @@
       <item>
        <widget class="QTableWidget" name="tableWidget">
         <property name="showGrid">
-         <bool>false</bool>
+         <bool>true</bool>
         </property>
         <property name="gridStyle">
          <enum>Qt::DotLine</enum>
@@ -39,28 +39,28 @@
          <bool>false</bool>
         </property>
         <property name="wordWrap">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
         <property name="cornerButtonEnabled">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
         <property name="rowCount">
          <number>0</number>
         </property>
         <property name="columnCount">
-         <number>6</number>
+         <number>7</number>
         </property>
         <attribute name="horizontalHeaderVisible">
          <bool>true</bool>
         </attribute>
+        <attribute name="horizontalHeaderMinimumSectionSize">
+         <number>76</number>
+        </attribute>
         <attribute name="horizontalHeaderDefaultSectionSize">
-         <number>0</number>
+         <number>76</number>
         </attribute>
         <attribute name="horizontalHeaderHighlightSections">
          <bool>true</bool>
-        </attribute>
-        <attribute name="horizontalHeaderMinimumSectionSize">
-         <number>76</number>
         </attribute>
         <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
          <bool>false</bool>
@@ -80,28 +80,29 @@
         <column/>
         <column/>
         <column/>
+        <column/>
        </widget>
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
-         <widget class="QPushButton" name="pushButton_3">
+         <widget class="QPushButton" name="addService">
           <property name="text">
-           <string>PushButton</string>
+           <string>Add Service</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton_2">
+         <widget class="QPushButton" name="deleteService">
           <property name="text">
-           <string>PushButton</string>
+           <string>Delete Service</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton">
+         <widget class="QPushButton" name="importConfig">
           <property name="text">
-           <string>PushButton</string>
+           <string>Import Config</string>
           </property>
          </widget>
         </item>
@@ -121,6 +122,13 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QPushButton" name="browseFile">
+        <property name="text">
+         <string>Browse</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </item>
    </layout>
@@ -132,7 +140,7 @@
      <x>0</x>
      <y>0</y>
      <width>959</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

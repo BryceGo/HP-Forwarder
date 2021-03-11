@@ -3,33 +3,14 @@ from utils import listener
 from utils import http_proxy
 
 from gui import main_ui
+from gui import add_service
+from gui import delete_service
 
 from gui import main_ui as gui
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QFileDialog, QWidget
+from PyQt5.QtWidgets import QFileDialog, QWidget, QPushButton
 from PyQt5.QtCore import QThread, QObject, QTimer
-
-def update_table(service_list, table):
-    table.clearContents()
-    for service in service_list:
-        pos = table.rowCount()
-        table.insertRow(pos)
-
-        table.setItem(pos, 0,  QtGui.QTableWidgetItem(str(pos)))
-
-        if type(service) == listener.ListenerServer:
-            table.setItem(pos, 1,  QtGui.QTableWidgetItem("TCP Port Forward"))
-            table.setItem(pos, 2,  QtGui.QTableWidgetItem(str(service.input_port)))
-            table.setItem(pos, 3,  QtGui.QTableWidgetItem(str(service.target_ip)))
-            table.setItem(pos, 4,  QtGui.QTableWidgetItem(str(service.target_port)))
-            table.setItem(pos, 5,  QtGui.QTableWidgetItem(str(service.stop_flag.is_set())))
-        else:
-            table.setItem(pos, 1,  QtGui.QTableWidgetItem("HTTP Proxy Server"))
-            table.setItem(pos, 2,  QtGui.QTableWidgetItem(str(service.input_port)))
-            table.setItem(pos, 3,  QtGui.QTableWidgetItem("-"))
-            table.setItem(pos, 4,  QtGui.QTableWidgetItem(str(80)))
-            table.setItem(pos, 5,  QtGui.QTableWidgetItem(str(service.stop_flag.is_set())))
-    return
+from functools import partial
 
 class MainWindow(QObject):
     def __init__(self):
@@ -41,16 +22,21 @@ class MainWindow(QObject):
         self.table = self.ui.tableWidget
 
         self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-        for i in range(1, self.ui.tableWidget.columnCount()):
+        self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        for i in range(2, self.ui.tableWidget.columnCount()):
             self.ui.tableWidget.horizontalHeader().setSectionResizeMode(i, QtWidgets.QHeaderView.Stretch)
 
-        self.ui.tableWidget.setHorizontalHeaderLabels(["Number", "Type", "Bound Port", "Target IP", "Target Port", "Status"])
+        self.ui.tableWidget.setHorizontalHeaderLabels(["Number", "Type", "Bound Port", "Target IP", "Target Port", "Status", "Start/Stop"])
 
         self.service_list = []
-        self.service_list.append(listener.ListenerServer(5000, '127.0.0.1', 300))
-        self.service_list.append(listener.ListenerServer(5001, '127.0.0.1', 301))
-        self.service_list.append(listener.ListenerServer(5002, '127.0.0.1', 302))
-        update_table(self.service_list, self.table)
+
+        # self.service_list.append(listener.ListenerServer(5000, '127.0.0.1', 300))
+        # self.service_list.append(listener.ListenerServer(5001, '127.0.0.1', 301))
+        # self.service_list.append(http_proxy.HTTPProxyServer(5002))
+        # self.update_table(self.service_list)
+        # self.service_list.pop(0)
+        # self.update_table(self.service_list)
+
         # self.timer = QTimer()
         # self.timer.timeout.connect(self.ui_updater)
         # self.timer.start(500)
@@ -68,90 +54,112 @@ class MainWindow(QObject):
         # self.ui.s_delay_rate.valueChanged.connect(self.print_delay_rate)
         # self.ui.s_delay.valueChanged.connect(self.print_delay)
 
+        self.ui.addService.clicked.connect(self.as_onclick)
+        self.ui.deleteService.clicked.connect(self.ds_onclick)
+
         self.MainWindow.show()
         sys.exit(self.app.exec_())
 
-    # def start_onclick(self):
-    #     self.network_emulator.stop = False
-    #     self.network_emulator.start()
-    #     self.terminal_queue.put("Start button pressed.")
+    def update_table(self, service_list):
+        num_rows = self.table.rowCount()
+        for i in range(0,num_rows):
+            self.table.removeRow(0)
 
-    # def stop_onclick(self):
-    #     self.network_emulator.stop_services()
-    #     self.terminal_queue.put("Stop button pressed.")
+        for service in service_list:
+            pos = self.table.rowCount()
+            self.table.insertRow(pos)
 
-    # def reload_onclick(self):
-    #     settings.initialize("EMULATOR")
-    #     self.terminal_queue.put("Reloading configuration...")
+            self.table.setItem(pos, 0,  QtWidgets.QTableWidgetItem(str(pos)))
 
-    # # Drop Rate
-    # def set_drop_rate(self):
-    #     value = self.ui.s_drop_rate.value()/10
-    #     self.network_emulator.set_drop_rate(value)
-    #     print(value)
+            if type(service) == listener.ListenerServer:
+                self.table.setItem(pos, 1,  QtWidgets.QTableWidgetItem("TCP Port Forward"))
+                self.table.setItem(pos, 2,  QtWidgets.QTableWidgetItem(str(service.input_port)))
+                self.table.setItem(pos, 3,  QtWidgets.QTableWidgetItem(str(service.target_ip)))
+                self.table.setItem(pos, 4,  QtWidgets.QTableWidgetItem(str(service.target_port)))
+            else:
+                self.table.setItem(pos, 1,  QtWidgets.QTableWidgetItem("HTTP Proxy Server"))
+                self.table.setItem(pos, 2,  QtWidgets.QTableWidgetItem(str(service.input_port)))
+                self.table.setItem(pos, 3,  QtWidgets.QTableWidgetItem("-"))
+                self.table.setItem(pos, 4,  QtWidgets.QTableWidgetItem(str(80)))
 
-    # def print_drop_rate(self):
-    #     value = self.ui.s_drop_rate.value()/10
-    #     self.ui.l_drop_rate.setText(str(value) + " %")
+            btn = QPushButton(self.table)
+            if service.stop_flag.is_set():
+                btn.setText("Start")
+                self.table.setItem(pos, 5,  QtWidgets.QTableWidgetItem("Stopped"))
+                btn.clicked.connect(partial(self.start_onclick, service))
+            else:
+                btn.setText("Stop")
+                self.table.setItem(pos, 5,  QtWidgets.QTableWidgetItem("Running"))
+                btn.clicked.connect(partial(self.stop_onclick, service))
 
-    # # Packet Delay Rate
-    # def set_delay_rate(self):
-    #     value = self.ui.s_delay_rate.value()/10
-    #     self.network_emulator.set_packet_delay(value)
+            self.table.setCellWidget(pos, 6, btn)
+        return
 
-    # def print_delay_rate(self):
-    #     value = self.ui.s_delay_rate.value()/10
-    #     self.ui.l_delay_rate.setText(str(value) + " %")
+    def start_onclick(self, service):
+        service.start()
+        self.update_table(self.service_list)
 
-    # # Delay in ms
-    # def set_delay(self):
-    #     value = self.ui.s_delay.value()
-    #     self.network_emulator.set_delay(value)
+    def stop_onclick(self, service):
+        service.stop()
+        self.update_table(self.service_list)
 
-    # def print_delay(self):
-    #     value = self.ui.s_delay.value()
-    #     self.ui.l_delay.setText(str(value) + " ms")
+    def as_onclick(self):
+        self.aService = QtWidgets.QDialog()
+        self.ui_as = add_service.Ui_aService()
+        self.ui_as.setupUi(self.aService)
+        self.ui_as.typeBox.addItems(['TCP Port Forward', 'HTTP Proxy Server'])
 
-    # def ui_updater(self):
-    #     if self.network_emulator.isRunning():
-    #         self.ui.l_status.setText("STATUS: RUNNING")
-    #     else:
-    #         self.ui.l_status.setText("STATUS: NOT RUNNING")
+        self.ui_as.create.clicked.connect(self.as_create_onclick)
+        self.ui_as.cancel.clicked.connect(self.as_cancel_onclick)
+        self.aService.show()
 
-    #     while not(self.graph1_queue.empty()) or not(self.graph2_queue.empty()):
-    #         if not(self.graph1_queue.empty()):
-    #             value = self.graph1_queue.get()
-    #             self.graph1_y.append(value)
-    #             self.graph1_y.pop(0)
+    def as_create_onclick(self):
+        type_of_service = self.ui_as.typeBox.currentIndex()
+        bind_port = self.ui_as.bindPort.value()
+        target_ip = self.ui_as.targetIP.text()
+        target_port = self.ui_as.targetPort.value()
+        num_workers = self.ui_as.workerNumber.value()
 
-    #         if not(self.graph2_queue.empty()):
-    #             value = self.graph2_queue.get()
-    #             self.graph2_y.append(value)
-    #             self.graph2_y.pop(0)
-    #     self.curve1.setData(self.graph1_x, self.graph1_y)
-    #     self.curve2.setData(self.graph2_x, self.graph2_y)
+        if type_of_service == 0:
+            service = listener.ListenerServer(input_port=bind_port,
+                                    target_ip=target_ip,
+                                    target_port=target_port,
+                                    workers=num_workers)
+        else:
+            service = http_proxy.HTTPProxyServer(input_port=bind_port,
+                                                workers=num_workers)
 
-    #     # Terminal Updater
-    #     while not(self.terminal_queue.empty()):
-    #         data = self.terminal_queue.get()
+        self.service_list.append(service)
+        self.update_table(self.service_list)
+        self.aService.close()
 
-    #         if data == 'Packet dropped':
-    #             self.drop_count += 1
-    #             continue
+    def as_cancel_onclick(self):
+        self.aService.close()
 
-    #         if data == 'Packet delayed':
-    #             self.delay_count += 1
-    #             continue
+    def ds_onclick(self):
+        self.dService = QtWidgets.QDialog()
+        self.ui_ds = delete_service.Ui_dService()
+        self.ui_ds.setupUi(self.dService)
 
-    #         if data == 'EOT packet detected. Services switching...':
-    #             self.eot_count += 1
+        count = 0
+        for service in self.service_list:
+            type_service = "Port Forward" if type(service) == listener.ListenerServer else "HTTP Proxy"
+            self.ui_ds.comboBox.addItem("Number: {}, Type: {}, Bound Port: {}". format(count, type_service, service.input_port))
+            count += 1
 
-    #         self.ui.terminal.append(data)
+        self.ui_ds.dButton.clicked.connect(self.ds_delete_onclick)
+        self.ui_ds.cButton.clicked.connect(self.ds_cancel_onclick)
+        self.dService.show()
 
-    #     self.ui.l_dropped.setText("Packets Dropped: {}".format(self.drop_count))
-    #     self.ui.l_delayed.setText("Packets Delayed: {}".format(self.delay_count))
-    #     self.ui.l_eot.setText("EOT Packets Detected: {}".format(self.eot_count))
+    def ds_delete_onclick(self):
+        index = self.ui_ds.comboBox.currentIndex()
+        self.service_list.pop(index)
+        self.update_table(self.service_list)
 
+        self.dService.close()
+
+    def ds_cancel_onclick(self):
+        self.dService.close()
 
 if __name__ == '__main__':
     main_window = MainWindow()

@@ -30,6 +30,7 @@ class HTTPProxyServer:
         self.outbound_epoll = select.epoll()
 
         self.stop_flag = threading.Event()
+        self.stop_flag.set()
 
         self.inbound_workers = []
         self.outbound_workers = []
@@ -186,7 +187,7 @@ class HTTPProxyServer:
                     if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
                         break
                     raise e
-
+        self.bind_socket.close()
 
     def start(self):
         self.stop_flag.clear()
