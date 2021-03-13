@@ -212,8 +212,9 @@ class HTTPProxyServer:
             i.join()
         self.outbound_workers.clear()
 
-        self.main_thread.join()
-        self.main_thread = None
+        if self.main_thread != None:
+            self.main_thread.join()
+            self.main_thread = None
 
     def get_inbound_connections(self):
         return len(self.inbound_connections)

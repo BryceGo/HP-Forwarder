@@ -1,6 +1,9 @@
 import sys
 import os
 import psutil
+import argparse
+import signal
+import threading
 
 from utils import config
 from utils import listener
@@ -15,6 +18,30 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog, QWidget, QPushButton, QFileDialog
 from PyQt5.QtCore import QThread, QObject, QTimer
 from functools import partial
+
+global SERVICE_LIST
+global WAIT_EVENT
+WAIT_EVENT = threading.Event()
+SERVICE_LIST = []
+
+def close_services():
+    global SERVICE_LIST
+    global WAIT_EVENT
+    WAIT_EVENT.set()
+
+    print("")
+    print("Exiting Application...")
+    for service in SERVICE_LIST:
+        service.stop()
+        sys.stdout.write(".")
+        sys.stdout.flush()
+
+    sys.stdout.write("\n")
+    return
+
+
+def signal_handler(sig, frame):
+    close_services()
 
 class MainWindow(QObject):
     def __init__(self):
@@ -40,13 +67,17 @@ class MainWindow(QObject):
         self.timer.start(1000)
 
     def run(self):
+        global SERVICE_LIST
         self.ui.addService.clicked.connect(self.as_onclick)
         self.ui.deleteService.clicked.connect(self.ds_onclick)
         self.ui.importConfig.clicked.connect(self.import_onclick)
         self.ui.browseFile.clicked.connect(self.browse_onclick)
 
         self.MainWindow.show()
-        sys.exit(self.app.exec_())
+        self.app.exec_()
+
+        SERVICE_LIST += self.service_list
+        close_services()
 
     def ui_updater(self):
         self.ui.cpuLoad.setText(str(psutil.cpu_percent()) + "%")
@@ -184,6 +215,57 @@ class MainWindow(QObject):
     def ds_cancel_onclick(self):
         self.dService.close()
 
+def main():
+    global SERVICE_LIST
+    global WAIT_EVENT
+    parser = argparse.ArgumentParser(description = "Port Forwarder")
+    parser.add_argument('-f', '--file' , help='The config.ini file. Set this file to automatically import the file.', type=str)
+    parser.add_argument('-n', '--nogui', help='Sets the application to run on the command line only. Must specify config file when set', action='store_true')
+
+    args = parser.parse_args()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    if(args.nogui == True):
+        if args.file == None:
+            print("Error, config file not set!")
+            print("Config file must be set with --nogui mode.")
+            return
+
+        if not(os.path.exists(args.file)):
+            print("Error, config file does not exist!")
+            return
+
+        try:
+            c = config.read_config(args.file)
+            SERVICE_LIST += config.extract_services(c)
+        except Exception as e:
+            print("Error reading config file!")
+            return
+
+        for service in SERVICE_LIST:
+            service.start()
+            type_of_service = "TCP Port Forward" if type(service) == listener.ListenerServer else "HTTP Proxy Server"
+            print("Started running {}.".format(type_of_service))
+            print("Running on port: {}".format(service.input_port))
+
+            if type(service) == listener.ListenerServer:
+                print("Target IP: {}".format(service.target_ip))
+                print("Target Port: {}".format(service.target_port))
+            print("-------")
+
+        print("All services are running...")
+        WAIT_EVENT.wait()
+
+    else:
+        main_window = MainWindow()
+        
+        if args.file != None and os.path.exists(args.file):
+            main_window.config_file = args.file
+            main_window.import_onclick()
+
+        main_window.run()
+
 if __name__ == '__main__':
-    main_window = MainWindow()
-    main_window.run()
+    main()
