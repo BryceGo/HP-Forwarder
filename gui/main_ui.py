@@ -99,7 +99,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "Port Forwarder"))
-        self.label.setText(_translate("MainWindow", "TextLabel"))
+        self.label.setText(_translate("MainWindow", "Service List"))
         self.tableWidget.setSortingEnabled(False)
         self.addService.setText(_translate("MainWindow", "Add Service"))
         self.deleteService.setText(_translate("MainWindow", "Delete Service"))
@@ -109,13 +109,3 @@ class Ui_MainWindow(object):
         self.label_4.setText(_translate("MainWindow", "Memory Load:"))
         self.memLoad.setText(_translate("MainWindow", "0%"))
         self.browseFile.setText(_translate("MainWindow", "Browse"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    MainWindow = QtWidgets.QMainWindow()
-    ui = Ui_MainWindow()
-    ui.setupUi(MainWindow)
-    MainWindow.show()
-    sys.exit(app.exec_())
