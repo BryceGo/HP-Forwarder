@@ -5,11 +5,10 @@ import errno
 
 class ListenerServer:
 
-    def __init__(self, input_port, target_ip, target_port, connections_per_thread = 5, workers = 10):
+    def __init__(self, input_port, target_ip, target_port, workers = 10):
         self.input_port = input_port
         self.target_ip = socket.gethostbyname(target_ip)
         self.target_port = target_port
-        self.connections_per_thread = connections_per_thread
 
         self.bind_epoll = select.epoll()
         self.bind_socket = None

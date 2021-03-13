@@ -1,4 +1,8 @@
 import sys
+import os
+import psutil
+
+from utils import config
 from utils import listener
 from utils import http_proxy
 
@@ -8,7 +12,7 @@ from gui import delete_service
 
 from gui import main_ui as gui
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QFileDialog, QWidget, QPushButton
+from PyQt5.QtWidgets import QFileDialog, QWidget, QPushButton, QFileDialog
 from PyQt5.QtCore import QThread, QObject, QTimer
 from functools import partial
 
@@ -30,35 +34,26 @@ class MainWindow(QObject):
 
         self.service_list = []
 
-        # self.service_list.append(listener.ListenerServer(5000, '127.0.0.1', 300))
-        # self.service_list.append(listener.ListenerServer(5001, '127.0.0.1', 301))
-        # self.service_list.append(http_proxy.HTTPProxyServer(5002))
-        # self.update_table(self.service_list)
-        # self.service_list.pop(0)
-        # self.update_table(self.service_list)
-
-        # self.timer = QTimer()
-        # self.timer.timeout.connect(self.ui_updater)
-        # self.timer.start(500)
+        self.config_file = ''
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.ui_updater)
+        self.timer.start(1000)
 
     def run(self):
-        # self.ui.b_start.clicked.connect(self.start_onclick)
-        # self.ui.b_stop.clicked.connect(self.stop_onclick)
-        # self.ui.b_reload.clicked.connect(self.reload_onclick)
-
-        # self.ui.s_drop_rate.sliderReleased.connect(self.set_drop_rate)
-        # self.ui.s_delay_rate.sliderReleased.connect(self.set_delay_rate)
-        # self.ui.s_delay.sliderReleased.connect(self.set_delay)
-
-        # self.ui.s_drop_rate.valueChanged.connect(self.print_drop_rate)
-        # self.ui.s_delay_rate.valueChanged.connect(self.print_delay_rate)
-        # self.ui.s_delay.valueChanged.connect(self.print_delay)
-
         self.ui.addService.clicked.connect(self.as_onclick)
         self.ui.deleteService.clicked.connect(self.ds_onclick)
+        self.ui.importConfig.clicked.connect(self.import_onclick)
+        self.ui.browseFile.clicked.connect(self.browse_onclick)
 
         self.MainWindow.show()
         sys.exit(self.app.exec_())
+
+    def ui_updater(self):
+        self.ui.cpuLoad.setText(str(psutil.cpu_percent()) + "%")
+        self.ui.memLoad.setText(str(psutil.virtual_memory().percent) + "%")
+
+    def update_console(self, text_value):
+        self.ui.consoleOutput.append(text_value)
 
     def update_table(self, service_list):
         num_rows = self.table.rowCount()
@@ -95,6 +90,29 @@ class MainWindow(QObject):
             self.table.setCellWidget(pos, 6, btn)
         return
 
+    def import_onclick(self):
+        if self.config_file == '':
+            self.update_console("No chosen file")
+            return
+        try:
+            c = config.read_config(self.config_file)
+            t_service_list = config.extract_services(c)
+            self.service_list += t_service_list
+            self.update_table(self.service_list)
+
+        except Exception as e:
+            self.update_console("Error importing {}".format(os.path.basename(self.config_file)))
+            return
+
+        self.update_console("Imported: {}".format(os.path.basename(self.config_file)))
+
+    def browse_onclick(self):
+        dlg = QFileDialog()
+        filename,_ = QFileDialog.getOpenFileName(dlg, "Browse Configuration file","./", "Config file *.ini(*.ini);; Any file *.*(*.*)")
+        if filename != '':
+            self.config_file = filename
+            self.update_console("Set config file as {}".format(os.path.basename(self.config_file)))
+
     def start_onclick(self, service):
         service.start()
         self.update_table(self.service_list)
@@ -125,9 +143,11 @@ class MainWindow(QObject):
                                     target_ip=target_ip,
                                     target_port=target_port,
                                     workers=num_workers)
+            self.update_console("TCP Listener Server added.")
         else:
             service = http_proxy.HTTPProxyServer(input_port=bind_port,
                                                 workers=num_workers)
+            self.update_console("HTTP Proxy Server added.")
 
         self.service_list.append(service)
         self.update_table(self.service_list)
@@ -153,8 +173,11 @@ class MainWindow(QObject):
 
     def ds_delete_onclick(self):
         index = self.ui_ds.comboBox.currentIndex()
+        if index < 0:
+            return
         self.service_list.pop(index)
         self.update_table(self.service_list)
+        self.update_console("Deleted server at index {}".format(index))
 
         self.dService.close()
 
