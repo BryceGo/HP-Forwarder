@@ -56,41 +56,56 @@ class HTTPProxyServer:
             raise e
             return None
 
-    def receive_and_send(self, sock, recv_list, send_list, inbound=True):
-        outbound_events = select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP | select.EPOLLEXCLUSIVE
+    def receive_all(self, sock, recv_list, send_list, inbound):
+        msg = b''
         while True:
             try:
-                msg = sock.recv(2048)
+                read_bytes = sock.recv(2048)
 
-                if msg == b'':
-                    self.close_socket(sock, recv_list)
-                    return
+                if read_bytes == b'':
+
+                    if inbound == True:
+                        self.close_sockets(sock, recv_list, send_list)
+                    else:
+                        self.close_socket(sock, recv_list)
+                    break
+                msg += read_bytes
             except Exception as e:
                 if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
-                    return
+                    break
+                raise e
+        return msg
 
-            try:
-                if not(sock.fileno() in recv_list):
-                    return
+    def receive_and_send(self, sock, recv_list, send_list, inbound=True):
+        outbound_events = select.EPOLLIN | select.EPOLLET | select.EPOLLERR | select.EPOLLHUP | select.EPOLLEXCLUSIVE
+        
+        msg = self.receive_all(sock, recv_list, send_list, inbound)
+        if msg == b'':
+            return
 
-                if inbound==False:
-                    sock, out_sock = recv_list[sock.fileno()]
-                    out_sock.sendall(msg)
-                else:
-                    out_sock = self.create_connection(msg)
-
-                    if out_sock == None:
-                        # self.close_socket(sock, recv_list)
-                        self.close_sockets(out_sock, recv_list, send_list)
-                        return
-
-                    self.outbound_epoll.register(out_sock.fileno(), outbound_events)
-                    self.outbound_connections[out_sock.fileno()] = [out_sock, sock]
-                    self.inbound_connections[sock.fileno()][1].append(out_sock)
-                    out_sock.sendall(msg)
-
-            except Exception as e:
+        try:
+            if not(sock.fileno() in recv_list):
+                # Must have been closed already...
                 return
+
+            if inbound==False:
+                sock, out_sock = recv_list[sock.fileno()]
+                out_sock.sendall(msg)
+            else:   
+                out_sock = self.create_connection(msg)
+
+                if out_sock == None:
+                    # self.close_socket(sock, recv_list)
+                    self.close_sockets(out_sock, recv_list, send_list)
+                    return
+
+                self.outbound_epoll.register(out_sock.fileno(), outbound_events)
+                self.outbound_connections[out_sock.fileno()] = [out_sock, sock]
+                self.inbound_connections[sock.fileno()][1].append(out_sock)
+                out_sock.sendall(msg)
+
+        except Exception as e:
+            return
 
     def close_sockets(self, sock, recv_list, send_list):
         if sock.fileno() == -1:
@@ -140,7 +155,6 @@ class HTTPProxyServer:
                 try:
                     sock, out_sock = recv_list[fd]
                 except Exception as e:
-                    # Must have been deleted
                     continue
 
                 if event & (select.EPOLLIN):
@@ -178,10 +192,11 @@ class HTTPProxyServer:
             while True:
                 try:
                     sock, address = self.bind_socket.accept()
+                    sock.setblocking(0)
 
                     # Register to the invound epoll instance
-                    self.inbound_epoll.register(sock.fileno(), inbound_events)
                     self.inbound_connections[sock.fileno()] = [sock, []]
+                    self.inbound_epoll.register(sock.fileno(), inbound_events)
 
                 except Exception as e:
                     if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:

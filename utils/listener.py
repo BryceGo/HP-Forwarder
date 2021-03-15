@@ -47,8 +47,11 @@ class ListenerServer:
                 if msg == b'':
                     self.close_sockets(sock, recv_list, send_list)
                     return
+
             except Exception as e:
-                return
+                if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+                        return
+                raise e
 
             try:
                 if not(sock.fileno() in recv_list):
@@ -140,18 +143,17 @@ class ListenerServer:
             while True:
                 try:
                     sock, address = self.bind_socket.accept()
+                    sock.setblocking(0)
                     out_sock = self.create_connection(self.target_ip, self.target_port)
                     if out_sock == -1:
                         sock.close()
                         continue
 
-                    # Register to the outbound epoll instance
-                    self.outbound_epoll.register(out_sock.fileno(), outbound_events)
                     self.outbound_connections[out_sock.fileno()] = [out_sock, sock]
-
-                    # Register to the invound epoll instance
-                    self.inbound_epoll.register(sock.fileno(), inbound_events)
                     self.inbound_connections[sock.fileno()] = [sock, out_sock]
+
+                    self.outbound_epoll.register(out_sock.fileno(), outbound_events)
+                    self.inbound_epoll.register(sock.fileno(), inbound_events)
 
                 except Exception as e:
                     if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
