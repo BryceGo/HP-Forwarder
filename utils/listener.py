@@ -51,7 +51,7 @@ class ListenerServer:
             except Exception as e:
                 if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
                         return
-                raise e
+                break
 
             try:
                 if not(sock.fileno() in recv_list):

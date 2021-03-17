@@ -73,7 +73,7 @@ class HTTPProxyServer:
             except Exception as e:
                 if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
                     break
-                raise e
+                return b''
         return msg
 
     def receive_and_send(self, sock, recv_list, send_list, inbound=True):
